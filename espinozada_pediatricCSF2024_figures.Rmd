@@ -1,0 +1,1355 @@
+---
+title: "Pediatric CSF Immune Profiling"
+subtitle: "Figure generation"
+author: "Diego A. Espinoza"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+    html_document:
+        theme: flatly
+        toc: true
+        toc_depth: 5
+        toc_float:
+            collapsed: false
+        code_folding: show
+        df_print: paged
+---
+
+```{r setup, include=FALSE}
+# this is the initial set up, you can just ignore
+require(knitr)
+require(kableExtra)
+require(magrittr)
+require(ggplot2)
+require(dplyr)
+require(lubridate)
+require(scales)
+require(pROC)
+```
+
+# A. Loading data
+
+## A.1 Processed data.
+
+```{r}
+target_directory <- "./"
+sample_data_long <- read.csv("flow_cytometric_data.csv")
+
+```
+
+
+# Figure 1
+
+## Setup
+```{r,fig.width = 3, fig.height=6}
+fig1_pt_size <- 1.5
+fig1_text_size <- 10
+fig1_theme <- theme_bw()+
+    theme(axis.text.x = element_text(size = fig1_text_size, angle = 45, hjust = 1),
+          axis.text.y = element_text(size = fig1_text_size),
+          strip.text = element_text(size = fig1_text_size),
+          axis.title = element_text(size = fig1_text_size),
+          legend.position = "none")
+fig1_populations <- c("CD3_T", "CD14_Mono", "NK", "DC", "PMN", "B")
+```
+
+
+## Plotting
+```{r}
+
+fig1b <- sample_data_long %>%
+    dplyr::filter(population_name == "ASC") %>% #just choose one population
+    dplyr::filter(diego_bin == "NIND") %>%
+    ggplot(aes(x = diego_bin, y = 1000*sample_concentration, fill = diego_bin))+
+    geom_boxplot(outlier.shape = NA, colour = "black")+
+    ggbeeswarm::geom_quasirandom(shape = 21, colour = "black", size = fig1_pt_size)+
+    scale_fill_manual(values = "grey90")+
+    scale_x_discrete(labels = "Cells")+
+    scale_y_continuous(trans = pseudo_log_trans(base = 10),
+                       breaks = c(0, 10^(1:5)),
+                       labels = function(x){ifelse(x == 0, 0, trans_format('log10', math_format(10^.x))(x))},
+                       limits = c(10^2, 10^4),
+                       expand = expansion(mult = c(0.05, 0.1)))+
+    facet_wrap(~"Cells")+
+    xlab(NULL)+
+    ylab("cells/mL")+
+    fig1_theme
+
+fig1c <- sample_data_long %>%
+    dplyr::filter(population_name %in% fig1_populations) %>%
+    dplyr::filter(diego_bin == "NIND") %>%
+    dplyr::mutate(population_name = factor(population_name, levels = fig1_populations)) %>%
+    dplyr::mutate(population_name = forcats::fct_recode(population_name, `CD3+ T cells` = "CD3_T", `CD14+ myeloid cells` = "CD14_Mono", PMNs = "PMN", `B cells` = "B", `NK cells` = "NK", DCs = "DC")) %>%
+    ggplot(aes(x = population_name, y = percent_parent, group = population_name, fill = population_name))+
+    geom_boxplot(outlier.shape = NA, colour = "black")+
+    ggbeeswarm::geom_quasirandom(shape = 21, colour = "black", size = fig1_pt_size)+
+    facet_wrap(~"Lineages")+
+    scale_fill_manual(values = rep("grey90", 6))+
+    xlab(NULL)+
+    ylab("% of cells")+
+    fig1_theme
+
+fig1d <- sample_data_long %>%
+    dplyr::filter(population_name %in% c("CD4_T", "CD8_T", "DN_T", "DP_T")) %>%
+    dplyr::filter(diego_bin== "NIND") %>%
+    dplyr::mutate(population_name = forcats::fct_recode(population_name, `CD4+ T cells` = "CD4_T", `CD8+ T cells` = "CD8_T", `DN T` = "DN_T", `DP T` = "DP_T")) %>%
+    ggplot(aes(x = population_name, y = percent_parent, group = population_name, fill = population_name))+
+    geom_boxplot(outlier.shape = NA, colour = "black")+
+    ggbeeswarm::geom_quasirandom(shape = 21, colour = "black", size = fig1_pt_size)+
+    facet_wrap(~"T-cell subsets", ncol = 1)+
+    scale_fill_manual(values = rep("grey90", 4))+
+    xlab(NULL)+
+    ylab("% of CD3+ T")+
+    fig1_theme
+
+
+fig1_toprow <- cowplot::plot_grid(NULL, NULL, fig1b, fig1c, fig1d, ncol = 5, rel_widths = c(4,6,2.5,6,4), align = "h", labels = c("A", "", LETTERS[2:4])) 
+
+fig1e <- sample_data_long %>%
+    dplyr::filter(diego_bin== "NIND") %>%
+    dplyr::filter(population_name %in% c("CD4_Tn", "CD4_Tnn")) %>%
+    dplyr::mutate(population_name = forcats::fct_recode(population_name, `CD4+ T naive` = "CD4_Tn", `CD4+ T memory` = "CD4_Tnn")) %>%
+    ggplot(aes(x = population_name, y = percent_parent, group = population_name, fill = population_name))+
+    geom_boxplot(outlier.shape = NA, colour = "black")+
+    ggbeeswarm ::geom_quasirandom(shape = 21, colour = "black", size = fig1_pt_size)+
+    facet_wrap(~"CD4+ T cell memory status", ncol = 1)+
+    scale_fill_manual(values = rep("grey90", 4))+
+    xlab(NULL)+
+    ylab("% of CD4+ T")+
+    fig1_theme+
+    theme(strip.background = element_rect(fill = "#4E7989"),
+          strip.text = element_text(colour = "white"))
+
+fig1f <- sample_data_long %>%
+    dplyr::filter(diego_bin == "NIND") %>%
+    dplyr::filter(population_name %in% c("CD8_Tn", "CD8_Tnn")) %>%
+    dplyr::mutate(population_name = forcats::fct_recode(population_name, `CD8+ T naive` = "CD8_Tn", `CD8+ T memory` = "CD8_Tnn")) %>%
+    ggplot(aes(x = population_name, y = percent_parent, group = population_name, fill = population_name))+
+    geom_boxplot(outlier.shape = NA, colour = "black")+
+    ggbeeswarm::geom_quasirandom(shape = 21, colour = "black", size = fig1_pt_size)+
+    facet_wrap(~"CD8+ T cell memory status")+
+    fig1_theme+
+    theme(strip.background = element_rect(fill = "#A9011B"),
+          strip.text = element_text(colour = "white"))+
+    scale_fill_manual(values = rep("grey90", 2))+
+    ylab("% of CD8+ T")+
+    xlab(NULL)
+
+fig1g_pvals <- sample_data_long %>%
+    dplyr::filter(population_name %in% c("CD8_Tnn", "CD8_Tn")) %>%
+    dplyr::filter(diego_bin %in% c("NIND")) %>%
+    dplyr::group_by(population_name) %>%
+    dplyr::group_modify(~ broom::glance(lm(percent_parent ~ age_at_LP, data = .x))) %>%
+    dplyr::mutate(r_sq_lb = paste0("italic(r^2==", round(r.squared,3), ")")) %>%
+    dplyr::mutate(p_va_lb = paste0("italic(p==", round(p.value, 3), ")"))
+
+fig1g_pvals
+
+fig1g <- sample_data_long %>%
+    dplyr::filter(population_name %in% c("CD8_Tnn", "CD8_Tn")) %>%
+    dplyr::filter(diego_bin %in% c("NIND")) %>%
+    ggplot(aes(x = age_at_LP, y = percent_parent))+
+    geom_smooth(method = "lm", colour = "black")+
+    geom_point(shape = 21, colour = "black", size = fig1_pt_size, fill = "grey90")+
+    geom_text(data = fig1g_pvals %>% dplyr::filter(population_name == "CD8_Tn"), aes(x = 3, y = 100, label = r_sq_lb), hjust = 0, parse = TRUE, size = 4)+
+    geom_text(data = fig1g_pvals %>% dplyr::filter(population_name == "CD8_Tn"), aes(x = 3, y = 93, label = p_va_lb), hjust = 0, parse = TRUE, size = 4)+
+    geom_text(data = fig1g_pvals %>% dplyr::filter(population_name == "CD8_Tnn"), aes(x = 3, y = 7, label = r_sq_lb), hjust = 0, parse = TRUE, size = 4)+
+    geom_text(data = fig1g_pvals %>% dplyr::filter(population_name == "CD8_Tnn"), aes(x = 3, y = 0, label = p_va_lb), hjust = 0, parse = TRUE, size = 4)+
+    facet_wrap(~population_name, ncol = 5, scales = "free_y", labeller = labeller(population_name = c(CD8_Tn = "CD8+ T naive", CD8_Tnn = "CD8+ T memory")))+
+    fig1_theme+
+    xlab("Age at LP (in years)")+
+    ylab("% of CD8+ T")+
+    theme(strip.background = element_rect(fill = "#fe8598"),
+          strip.text = element_text(colour = "white"),
+          axis.text.x = element_text(angle = 45, hjust = 1))+
+    scale_y_continuous(labels = seq(0,100,10), breaks = seq(0,100,10), limits = c(0,100))
+
+fig1_botrow <- cowplot::plot_grid(fig1e, fig1f, fig1g, ncol = 3, rel_widths = c(1,1,1.5), labels = LETTERS[5:7])
+
+figure1 <- cowplot::plot_grid(fig1_toprow, fig1_botrow, ncol = 1, rel_heights = c(2,1.8))
+
+pdf(file = paste0(target_directory, "Figure1.pdf"), height = 8, width = 11)
+figure1
+dev.off()
+```
+
+## Medians
+```{r}
+sample_medians <- sample_data_long %>%
+    dplyr::filter(diego_bin == "NIND") %>%
+    dplyr::group_by(population_name) %>%
+    dplyr::summarize(population_median_per_parent = median(percent_parent),
+                     population_median_cell_count = median(cell_concentration))
+sample_medians
+```
+
+# Figure S2
+
+## Setup
+```{r}
+figs2c_populations <-  c("CD4_Tem", "CD4_Temra", "CD4_Tcm")
+figs2d_populations <- c("CD4_Th1", "CD4_Th17.1", "CD4_Th17", "CD4_Th0Th2")
+figs2e_populations <- c("CD4_Th1_act_true", "CD4_Th17_act_true", "CD4_Th17.1_act_true", "CD4_Th0Th2_act_true", "CD4_Tnn_act")
+figs2f_populations <- c("CD8_Tem", "CD8_Tcm", "CD8_Temra")
+
+figs2a_table <- sample_data_long %>%
+    dplyr::filter(diego_bin == "NIND") %>%
+    dplyr::mutate(logcc = log10(1+(1000*cell_concentration)))
+
+figs2a_pvals <- figs2a_table %>%
+    dplyr::filter(population_name == "CD8_T") %>%
+    dplyr::group_by(population_name) %>%
+    dplyr::group_modify(~ broom::glance(lm(logcc ~ age_at_LP, data = .x))) %>%
+    dplyr::mutate(r_sq_lb = paste0("italic(r^2==", round(r.squared,3), ")")) %>%
+    dplyr::mutate(p_va_lb = paste0("italic(p==", round(p.value, 3), ")"))
+
+figs2b_pvals <- figs2a_table %>%
+    dplyr::filter(population_name %in% c("CD4_Tnn", "CD4_Tn")) %>%
+    dplyr::group_by(population_name) %>%
+    dplyr::group_modify(~ broom::glance(lm(percent_parent ~ age_at_LP, data = .x))) %>%
+    dplyr::mutate(r_sq_lb = paste0("italic(r^2==", round(r.squared,3), ")")) %>%
+    dplyr::mutate(p_va_lb = paste0("italic(p==", round(p.value, 3), ")"))
+
+
+y_maker <- function(x){
+    ifelse(x == 0, 0, math_format(10^.x)(x))
+}
+
+
+```
+
+## Plotting
+```{r}
+
+figs2a <- figs2a_table %>%
+    dplyr::filter(population_name == "CD8_T") %>%
+    ggplot(aes(x = age_at_LP, y = logcc))+
+    geom_smooth(method = "lm", colour = "black")+
+    geom_point(shape = 21, colour = "black", size = fig1_pt_size, fill = "grey90")+
+    geom_text(data = figs2a_pvals, aes(x = 3, y = 3, label = r_sq_lb), hjust = 0, parse = TRUE, size = 4)+
+    geom_text(data = figs2a_pvals, aes(x = 3, y = 3.1, label = p_va_lb), hjust = 0, parse = TRUE, size = 4)+
+    facet_wrap(~"CD8 T-cell count")+
+    fig1_theme+
+    xlab("Age at LP (in years)")+
+    ylab("cells/mL")+
+    scale_y_continuous(breaks = 0:6,
+                       labels = y_maker,
+                       expand = expansion(mult = c(0.05, 0.08)))+
+    theme(strip.background = element_rect(fill = "grey90"),
+          strip.text = element_text(colour = "black"),
+          axis.text.x = element_text(angle = 45, hjust = 1))
+
+figs2b <- sample_data_long %>%
+    dplyr::filter(population_name %in% c("CD4_Tnn", "CD4_Tn")) %>%
+    dplyr::filter(diego_bin %in% c("NIND")) %>%
+    ggplot(aes(x = age_at_LP, y = percent_parent))+
+    geom_smooth(method = "lm", colour = "black")+
+    geom_point(shape = 21, colour = "black", size = fig1_pt_size, fill = "grey90")+
+    geom_text(data = figs2b_pvals, aes(x = 13, y = 30, label = r_sq_lb), hjust = 0, parse = TRUE, size = 4)+
+    geom_text(data = figs2b_pvals, aes(x = 13, y = 38, label = p_va_lb), hjust = 0, parse = TRUE, size = 4)+
+    facet_wrap(~population_name, ncol = 5, scales = "free_y", labeller = labeller(population_name = c(CD4_Tn = "CD4+ T naive", CD4_Tnn = "CD4+ T memory")))+
+    fig1_theme+
+    xlab("Age at LP (in years)")+
+    ylab("% of CD4+ T")+
+    theme(strip.background = element_rect(fill = "black"),
+          strip.text = element_text(colour = "white"),
+          axis.text.x = element_text(angle = 45, hjust = 1))+
+    scale_y_continuous(labels = seq(0,100,10), breaks = seq(0,100,10), limits = c(-5,105))
+
+figs2c <- sample_data_long %>%
+    dplyr::filter(population_name %in% figs2c_populations) %>%
+    dplyr::mutate(population_name = forcats::fct_recode(population_name, `CD4+ T EM` = "CD4_Tem", `CD4+ T EMRA` = "CD4_Temra", `CD4+ T CM` = "CD4_Tcm")) %>%
+    dplyr::filter(diego_bin == "NIND") %>%
+    ggplot(aes(x = population_name, y = percent_parent, group = population_name, fill = population_name))+
+    geom_boxplot(outlier.shape = NA, colour = "black")+
+    ggbeeswarm::geom_quasirandom(shape = 21, colour = "black", size = fig1_pt_size)+
+    facet_wrap(~"CD4+ T memory subsets")+
+    theme_bw()+
+    scale_fill_manual(values = rep("grey90", 3))+
+    fig1_theme+
+    theme(strip.background = element_rect(fill = "#4E7989"),
+          strip.text = element_text(colour = "white"))+
+    ylab("% of CD4+ T memory")+
+    xlab(NULL)
+
+figs2d <- sample_data_long %>%
+    dplyr::filter(population_name %in% figs2d_populations) %>%
+    dplyr::mutate(population_name = factor(population_name, levels = figs2d_populations)) %>%
+    dplyr::mutate(population_name = forcats::fct_recode(population_name, `Th1` = "CD4_Th1", `Th17` = "CD4_Th17", `Th17.1` = "CD4_Th17.1", `Th0Th2` = "CD4_Th0Th2")) %>%
+    dplyr::filter(diego_bin == "NIND") %>%
+    ggplot(aes(x = population_name, y = percent_parent, group = population_name, fill = population_name))+
+    geom_boxplot(outlier.shape = NA, colour = "black")+
+    ggbeeswarm::geom_quasirandom(shape = 21, colour = "black", size = fig1_pt_size)+
+    facet_wrap(~"CD4+ Th subsets")+
+    theme_bw()+
+    scale_fill_manual(values = rep("grey90", 4))+
+    fig1_theme+
+    theme(strip.background = element_rect(fill = "#4E7989"),
+          strip.text = element_text(colour = "white"))+
+    ylab("% of CD4+ T memory")+
+    scale_y_continuous(breaks = c(0,20,40,60, 80))+
+    xlab(NULL)
+
+figs2e <- sample_data_long %>%
+    dplyr::filter(diego_bin == "NIND") %>%
+    dplyr::filter(population_name %in% figs2e_populations) %>%
+    dplyr::mutate(population_name = factor(population_name, levels = figs2e_populations)) %>%
+    dplyr::mutate(population_name = forcats::fct_recode(population_name, `Activated Th1` = "CD4_Th1_act_true", `Activated Th17` = "CD4_Th17_act_true", `Activated Th17.1` = "CD4_Th17.1_act_true", `Activated Th0Th2` = "CD4_Th0Th2_act_true", `Total Activated` = "CD4_Tnn_act")) %>%
+    ggplot(aes(x = population_name, y = percent_parent, group = population_name, fill = population_name))+
+    geom_boxplot(outlier.shape = NA, colour = "black")+
+    ggbeeswarm::geom_quasirandom(shape = 21, colour = "black", size = fig1_pt_size)+
+    facet_wrap(~"Activated CD4+ T subsets")+
+    theme_bw()+
+    scale_fill_manual(values = rep("grey90", 5))+
+    fig1_theme+
+    theme(strip.background = element_rect(fill = "#4E7989"),
+          strip.text = element_text(colour = "white"))+
+    ylab("% of CD4+ T memory")+
+    xlab(NULL)+
+    scale_y_continuous(breaks = c(0,20,40,60,80), limits = c(0,40))
+
+figs2f <- sample_data_long %>%
+    dplyr::filter(diego_bin == "NIND") %>%
+    dplyr::filter(population_name %in% figs2f_populations) %>%
+    dplyr::mutate(population_name = forcats::fct_recode(population_name, `CD8+ T EM` = "CD8_Tem", `CD8+ T EMRA` = "CD8_Temra", `CD8+ T CM` = "CD8_Tcm")) %>%
+    ggplot(aes(x = population_name, y = percent_parent, group = population_name, fill = population_name))+
+    geom_boxplot(outlier.shape = NA, colour = "black")+
+    ggbeeswarm::geom_quasirandom(shape = 21, colour = "black", size = fig1_pt_size)+
+    facet_wrap(~"CD8+ T memory subsets")+
+    theme_bw()+
+    scale_fill_manual(values = rep("grey90", 3))+
+    fig1_theme+
+    theme(strip.background = element_rect(fill = "#A9011B"),
+          strip.text = element_text(colour = "white"))+
+    ylab("% of CD8+ T memory")+
+    xlab(NULL)
+
+
+figs2g <- sample_data_long %>%
+    dplyr::filter(diego_bin == "NIND") %>%
+    dplyr::filter(population_name %in% c("CD8_Tnn_act")) %>%
+    dplyr::mutate(population_name = forcats::fct_recode(population_name, `CD8+ T activated` = "CD8_Tnn_act")) %>%
+    ggplot(aes(x = population_name, y = percent_parent, group = population_name, fill = population_name))+
+    geom_boxplot(outlier.shape = NA, colour = "black")+
+    ggbeeswarm::geom_quasirandom(shape = 21, colour = "black", size = fig1_pt_size)+
+    facet_wrap(~"Activated CD8+ T")+
+    theme_bw()+
+    scale_fill_manual(values = rep("grey90", 3))+
+    fig1_theme+
+    scale_y_continuous(limits = c(0, 40))+
+    theme(strip.background = element_rect(fill = "#A9011B"),
+          strip.text = element_text(colour = "white"))+
+    ylab("% of CD8+ T memory")+
+    xlab(NULL)
+
+figs2top <- cowplot::plot_grid(figs2a, figs2b, ncol = 2, align = "hv", labels = LETTERS[1:2], rel_widths = c(1,2))
+figs2bottom <- cowplot::plot_grid(figs2c, figs2d, figs2e, figs2f, figs2g, NULL, ncol = 3, align = "hv", labels = LETTERS[3:7])
+
+pdf(file = paste0(target_directory, "FigureS2.pdf"), height = 11, width = 8)
+cowplot::plot_grid(figs2top, figs2bottom, ncol = 1, rel_heights = c(1,2))
+dev.off()
+
+summarized_counts <- sample_data_long %>%
+    dplyr::filter(population_name == "ASC") %>%
+    dplyr::group_by(diego_bin) %>%
+    dplyr::summarize(median_conc = median(sample_concentration), min_conc = min(sample_concentration), max_conc = max(sample_concentration))
+summarized_counts
+
+```
+
+# Figure 2
+
+## Setup
+
+```{r}
+
+fig2_groups <- c("NIND", "PIND", "AIE", "IDWM", "other ADS", "MOGAD", "MS")
+fig2_comparisons <- list(c("NIND", "ADS"), c("PIND", "ADS"), c("AIE", "ADS"), c("IDWM", "ADS"))
+fig2_comparison_correction <- "none"
+fig2_summarized_ads <- c("other ADS", "MOGAD", "MS")
+fig2_grouped_palette <- c("white", "white", "white", "white", "#A0C99C")
+fig2_comparison_palette <- c(`ADS vs. NIND` = "#e6194b",
+                             `ADS vs. PIND` = "#3cb44b",
+                             `ADS vs. AIE` = "#ffe119",
+                             `ADS vs. IDWM` = "#4363d8",
+                             `not significant` = "grey90")
+
+fig2_pt_size <- 1.5
+fig2_text_size <- 10
+
+fig2_theme <- theme_bw()+
+    theme(axis.text.x = element_text(size = fig2_text_size, angle = 45, hjust = 1),
+          axis.text.y = element_text(size = fig2_text_size),
+          strip.text = element_text(size = fig2_text_size),
+          axis.title = element_text(size = fig2_text_size),
+          legend.position = "none")
+
+y_maker <- function(x){
+    ifelse(x == 0, 0, math_format(10^.x)(x))
+}
+
+my_y_scale <- scale_y_continuous(breaks = 0:6,
+                                 labels = y_maker,
+                                 expand = expansion(mult = c(0.05, 0.08)))
+
+my_y_scale_perc <- scale_y_continuous(expand = expansion(mult = c(0.05, 0.08)))
+
+fig2a_table <- sample_data_long %>%
+    dplyr::filter(population_name == "ASC") %>% # just summarizing the long data into a single row
+    dplyr::filter(diego_bin %in% fig2_groups) %>%
+    dplyr::mutate(diego_bin = factor(diego_bin, fig2_groups)) %>%
+    dplyr::mutate(sample_concentration_ml = 1000 * sample_concentration) %>% #transforming concentration to cells/mL
+    dplyr::mutate(diego_bin = forcats::fct_collapse(diego_bin, ADS = fig2_summarized_ads))
+
+fig2a_stats <- fig2a_table %>% 
+    rstatix::wilcox_test(sample_concentration_ml ~ diego_bin, comparisons = fig2_comparisons, p.adjust.method = fig2_comparison_correction) %>%
+    dplyr::filter(p.adj.signif != "ns") %>%
+    rstatix::add_xy_position(scales = "free_y")
+
+
+fig2b_populations <- c("CD3_T", "CD14_Mono", "NK", "DC", "PMN", "B")
+fig2b_table <- sample_data_long %>%
+    dplyr::filter(diego_bin %in% fig2_groups) %>%
+    dplyr::mutate(diego_bin = factor(diego_bin, fig2_groups)) %>%
+    dplyr::filter(population_name %in% fig2b_populations) %>%
+    dplyr::mutate(population_name = factor(population_name, levels = fig2b_populations)) %>%
+    dplyr::mutate(population_name = forcats::fct_recode(population_name, `CD3+ T cells` = "CD3_T", `CD14+ myeloid cells` = "CD14_Mono", `NK cells` = "NK", `DCs` = "DC", `B cells` = "B", `PMNs` = "PMN")) %>%
+    dplyr::mutate(concentration = 1000 * cell_concentration) %>% #get to cells/mL
+    dplyr::mutate(diego_bin = forcats::fct_collapse(diego_bin, ADS = fig2_summarized_ads))
+
+fig2b_stats <- fig2b_table %>% 
+    dplyr::group_by(population_name) %>%
+    rstatix::wilcox_test(concentration ~ diego_bin, comparisons = fig2_comparisons) %>%
+    dplyr::filter(p.adj.signif != "ns") %>%
+    rstatix::add_xy_position(scales = "free_y")
+
+fig2b_stats_subset <- fig2b_stats %>%
+    dplyr::select(population_name, group1, p) %>%
+    dplyr::mutate(diego_bin = group1)
+
+fig2c_table <- fig2b_table %>%
+    dplyr::group_by(diego_bin, population_name) %>%
+    dplyr::summarize(median_concentration = median(concentration)) %>% 
+    dplyr::ungroup() %>%
+    dplyr::group_by(population_name) %>%
+    dplyr::mutate(ads_concentration = median_concentration[diego_bin == "ADS"]) %>%
+    dplyr::filter(diego_bin != "ADS") %>%
+    dplyr::mutate(delta_median_concentration = ads_concentration-median_concentration) %>%
+    dplyr::mutate(fc_concentration = ads_concentration/median_concentration) %>%
+    dplyr::mutate(log_fc_medians = log10(fc_concentration)) %>%
+    dplyr::left_join(fig2b_stats_subset, by = c("population_name", "diego_bin")) %>%
+    dplyr::mutate(comparison = ifelse(is.na(p), "not significant", paste0("ADS vs. ", diego_bin))) %>%
+    dplyr::mutate(population_name = factor(population_name, levels = rev(levels(population_name)))) %>%
+    dplyr::mutate(comparison = factor(comparison, levels = unique(names(fig2_comparison_palette))))
+
+```
+
+## Plotting
+```{r}
+
+fig2a <- ggplot(fig2a_table, aes(x = diego_bin, y = log10(1+sample_concentration_ml)))+
+    geom_boxplot(aes(fill = diego_bin), outlier.shape = NA, colour = "black")+
+    ggbeeswarm::geom_quasirandom(aes(fill = diego_bin), shape = 21, colour = "black", size = fig2_pt_size)+
+    scale_fill_manual(values = fig2_grouped_palette)+
+    my_y_scale+
+    xlab(NULL)+
+    facet_wrap(~"Cells")+
+    ylab("cells/mL")+
+    fig2_theme+
+    ggpubr::stat_pvalue_manual(data = fig2a_stats %>%
+                                   dplyr::mutate(y.position = log10(1+min(y.position))) %>%
+                                   dplyr::ungroup(),
+                               step.increase = 0.1,
+                               tip.length = 0.01,
+                               bracket.nudge.y = 0.1)
+
+
+fig2b <- ggplot(fig2b_table, aes(x = diego_bin, y = log10(1+concentration)))+
+    geom_boxplot(aes(group = diego_bin, fill = diego_bin), outlier.shape = NA, colour = "black")+
+    ggbeeswarm::geom_quasirandom(aes(group = diego_bin, fill = diego_bin), shape = 21, colour = "black", size = fig2_pt_size)+
+    facet_wrap(~population_name, ncol = 3, scales = "free")+
+    theme_bw()+
+    scale_fill_manual(values = fig2_grouped_palette)+
+    fig2_theme+
+    xlab(NULL)+
+    ylab("cells/mL")+
+    my_y_scale+
+    ggpubr::stat_pvalue_manual(data = fig2b_stats %>%
+                                   dplyr::group_by(population_name) %>%
+                                   dplyr::mutate(y.position = log10(1+min(y.position))) %>%
+                                   dplyr::ungroup(),
+                               step.group.by = "population_name",
+                               step.increase = 0.1,
+                               tip.length = 0.01,
+                               bracket.nudge.y = 0.1)
+
+fig2c <- ggplot(fig2c_table, aes(x = log_fc_medians, y = population_name, fill = comparison))+
+    ggbeeswarm::geom_beeswarm(shape = 21, size = 2*fig2_pt_size, cex = 3, method = "hex", side = 1L)+
+    scale_fill_manual("Comparisons", values = fig2_comparison_palette)+
+    theme_bw()+
+    fig2_theme+
+    scale_x_continuous(limits = c(0,2))+
+    geom_vline(xintercept = 0)+
+    ylab("Lineage")+
+    theme(legend.position = "bottom",
+          legend.justification = "right",
+          legend.text = element_text(size = 0.75*fig2_text_size),
+          legend.key.height = unit(0.01, "cm"),
+          legend.title = element_text(size = 0.75*fig2_text_size),
+          axis.text.x = element_text(angle = 0, hjust = 0.5))+
+    xlab("log10 fold-change of medians\nlog10(ADS/comparator)")+
+    facet_grid(~"log10(count fold-change)")+
+    guides(fill = guide_legend(nrow = 3, byrow = FALSE, title.position = "top"))
+
+
+pdf(file = paste0(target_directory, "Figure2.pdf"), height = 5, width =11)
+cowplot::plot_grid(fig2a, fig2b, fig2c, align = "hv", axis = "y", rel_widths = c(1,3,2), labels = LETTERS[1:3], ncol = 3, hjust = -1)
+dev.off()
+
+```
+
+
+# Figure 3
+
+## Setup
+```{r}
+
+fig3_groups <- c("NIND", "PIND", "AIE", "IDWM", "other ADS", "MOGAD", "MS")
+ads_palette <- c("white", "white", "white", "white", "#FCBC52", "#A9011B", "#4E7989")
+fig3_comparisons <- list( c("other ADS", "MOGAD"),c("other ADS", "MS"), c("MS", "MOGAD"))
+fig3_populations <- c("ASC", "B", "B_nonASC", "CD3_T", "NK", "DC", "PMN","CD14_Mono")
+fig3_comparison_correction <- "none"
+fig3d_comparison_palette <- c(`MS vs. MOGAD` = "purple",
+                              `MS vs. other ADS` = "forestgreen",
+                              `not significant` = "grey90")
+
+
+fig3_pt_size <- 2
+fig3_text_size <- 10
+fig3_theme <- theme_bw()+
+    theme(axis.text.x = element_text(size = fig3_text_size, angle = 45, hjust = 1),
+          axis.text.y = element_text(size = fig3_text_size),
+          strip.text = element_text(size = fig3_text_size),
+          axis.title = element_text(size = fig3_text_size),
+          legend.position = "none")
+
+fig3_table <- sample_data_long %>%
+    dplyr::filter(diego_bin %in% fig3_groups) %>%
+    dplyr::mutate(diego_bin = factor(diego_bin, fig3_groups)) %>%
+    dplyr::filter(population_name %in% fig3_populations) %>%
+    dplyr::mutate(population_name = factor(population_name, levels = fig3_populations)) %>%
+    droplevels() %>%
+    dplyr::mutate(cell_concentration_ml = 1000 * cell_concentration) #get to cells/mL
+
+fig3_stats_counts <- fig3_table %>% 
+    dplyr::group_by(population_name) %>%
+    rstatix::wilcox_test(cell_concentration_ml ~ diego_bin, comparisons = fig3_comparisons, p.adjust.method = fig3_comparison_correction) %>%
+    rstatix::add_xy_position(scales = "free_y") %>%
+    dplyr::group_by(population_name) %>%
+    dplyr::mutate(y.position = min(y.position)) %>%
+    dplyr::filter(p.adj.signif != "ns")
+
+fig3_stats_freqs <- fig3_table %>% 
+    dplyr::group_by(population_name) %>%
+    rstatix::wilcox_test(percent_parent ~ diego_bin, comparisons = fig3_comparisons, p.adjust.method = fig3_comparison_correction) %>%
+    rstatix::add_xy_position(scales = "free_y") %>%
+    dplyr::group_by(population_name) %>%
+    dplyr::mutate(y.position = min(y.position)) %>%
+    dplyr::filter(p.adj.signif != "ns")
+
+
+fig3c_stats_freqs_subset <- fig3_stats_freqs %>%
+    dplyr::select(population_name, group1, p) %>%
+    dplyr::mutate(diego_bin = group1)
+
+fig3d_table <- fig3_table %>%
+    dplyr::filter(diego_bin %in% c("other ADS", "MOGAD", "MS")) %>%
+    dplyr::group_by(diego_bin, population_name) %>%
+    dplyr::summarize(median_concentration = median(percent_parent)) %>% 
+    dplyr::ungroup() %>%
+    dplyr::group_by(population_name) %>%
+    dplyr::mutate(ms_concentration = median_concentration[diego_bin == "MS"]) %>%
+    dplyr::filter(diego_bin != "MS") %>%
+    dplyr::mutate(delta_median_concentration = ms_concentration-median_concentration) %>%
+    dplyr::mutate(fc_concentration = ms_concentration/median_concentration) %>%
+    dplyr::mutate(log_fc_medians = log10(fc_concentration)) %>%
+    dplyr::left_join(fig3c_stats_freqs_subset, by = c("population_name", "diego_bin")) %>%
+    dplyr::mutate(comparison = ifelse(is.na(p), "not significant", paste0("MS vs. ", diego_bin))) %>%
+    dplyr::mutate(comparison = factor(comparison, levels = unique(names(fig3d_comparison_palette)))) %>%
+    dplyr::mutate(population_name = factor(population_name, levels = rev(fig3_populations))) %>%
+    dplyr::mutate(population_name = forcats::fct_recode(population_name, `CD3+ T cells` = "CD3_T", `CD14+ myeloid cells` = "CD14_Mono", `NK cells` = "NK", `DCs` = "DC", `B cells` = "B", `PMNs` = "PMN", "ASCs" = "ASC", "non-ASC B cells" = "B_nonASC"))
+
+fig3_table %>%
+    dplyr::filter(population_name == "ASC") %>%
+    dplyr::group_by(diego_bin) %>%
+    dplyr::summarize(yes_ASC = sum(percent_parent > 0), no_ASC = sum(percent_parent == 0))
+
+```
+
+## Plotting
+```{r}
+
+fig3_plotter <- function(my_table, my_stats, my_population, my_title, freqs = TRUE){
+    if(freqs){
+        temp_fig <- my_table %>%
+            dplyr::filter(population_name == my_population) %>%
+            ggplot(aes(x = diego_bin, y = percent_parent, group = diego_bin))+
+            ggpubr::stat_pvalue_manual(data = my_stats %>%
+                                           dplyr::filter(population_name == my_population) %>%
+                                           dplyr::mutate(y.position = min(y.position)),
+                                       step.increase = 0.1,
+                                       tip.length = 0.01,
+                                       bracket.nudge.y = -0.5)+
+            my_y_scale_perc+
+            ylab("% of cells")
+        
+    } else {
+        temp_fig <- my_table %>%
+            dplyr::filter(population_name == my_population) %>%
+            ggplot(aes(x = diego_bin, y = log10(1+cell_concentration_ml), group = diego_bin))+
+            ggpubr::stat_pvalue_manual(data = my_stats %>%
+                                           dplyr::filter(population_name == my_population) %>%
+                                           dplyr::mutate(y.position = log10(1+min(y.position))),
+                                       step.increase = 0.1,
+                                       tip.length = 0.01,
+                                       bracket.nudge.y = 0.1)+
+            my_y_scale+
+            ylab("cells/mL")
+    }
+    
+    temp_fig <- temp_fig +
+        geom_boxplot(aes(fill = diego_bin), outlier.shape = NA, colour = "black")+
+        ggbeeswarm::geom_quasirandom(aes(fill = diego_bin), shape = 21, colour = "black", size = fig3_pt_size)+
+        scale_x_discrete(drop=FALSE)+
+        scale_fill_manual(values = ads_palette)+
+        fig3_theme+
+        facet_wrap(~paste0(my_title), scales = "free_y")+
+        xlab(NULL)
+    
+    return(temp_fig)
+}
+
+
+fig3a <- fig3_plotter(fig3_table, fig3_stats_freqs, "B", my_title = "B cells", freqs = TRUE)
+fig3b <- fig3_plotter(fig3_table, fig3_stats_freqs, "ASC", my_title = "ASCs", freqs = TRUE)
+#fig3c <- fig3_plotter(fig3_table, fig3_stats_freqs, "B_nonASC", my_title = "non-ASC B cells", freqs = TRUE)
+fig3c <- fig3_plotter(fig3_table, fig3_stats_freqs, "CD14_Mono", my_title = "CD14+ myeloid cells", freqs = TRUE)
+
+fig3a2 <- fig3_plotter(fig3_table, fig3_stats_counts, "B", my_title = "B cells", freqs = FALSE)
+fig3b2 <- fig3_plotter(fig3_table, fig3_stats_counts, "ASC", my_title = "ASCs", freqs = FALSE)
+#fig3c2 <- fig3_plotter(fig3_table, fig3_stats_counts, "B_nonASC", my_title = "non-ASC B cells", freqs = FALSE)
+fig3c2 <- fig3_plotter(fig3_table, fig3_stats_counts, "CD14_Mono", my_title = "CD14+ myeloid cells", freqs = FALSE)
+
+
+fig3d <- ggplot(fig3d_table, aes(x = log_fc_medians, y = population_name, fill = comparison))+
+    ggbeeswarm::geom_beeswarm(shape = 21, size = 2*fig3_pt_size, cex = 3, method = "hex", side = 1L)+
+    scale_fill_manual("Comparisons", values = fig3d_comparison_palette)+
+    scale_x_continuous(limits = c(-2,2), breaks = seq(from = -2, to = 2, by = 1))+
+    theme_bw()+
+    fig2_theme+
+    geom_vline(xintercept = 0)+
+    ylab("Cell population")+
+    theme(legend.position = "bottom",
+          legend.justification = "left",
+          legend.text = element_text(size = 0.75*fig3_text_size),
+          legend.key.height = unit(0.01, "cm"),
+          legend.title = element_text(size = 0.75*fig3_text_size),
+          axis.text.x = element_text(angle = 0, hjust = 0.5))+
+    xlab("log10 fold-change of medians\nlog10(MS/comparator)")+
+    facet_grid(~"log10(frequency fold-change)")+
+    guides(fill = guide_legend(nrow = 3, byrow = FALSE, title.position = "top"))
+
+fig3left <- cowplot::plot_grid(fig3a, fig3b, fig3c, fig3a2, fig3b2, fig3c2, ncol = 3, align = "hv", labels = c("A", "B", "C", "", "", ""), hjust = -1)
+
+pdf(file = paste0(target_directory, "Figure3.pdf"), height = 6, width = 12)
+cowplot::plot_grid(fig3left, fig3d, ncol = 2, rel_widths = c(3,1.5), labels = c("", "D"), hjust = -1)
+dev.off()
+
+```
+
+# Figure S3
+
+## Setup
+```{r,eval=TRUE}
+figs3_pt_size <- 1.5
+figs3_text_size <- 10
+figs3_groups <- c("NIND", "PIND", "AIE", "IDWM", "other ADS", "MOGAD", "MS")
+figs3_comparisons <- list( c("other ADS", "MOGAD"),c("other ADS", "MS"), c("MS", "MOGAD"))
+figs3_comparison_correction <- "none"
+ads_palette <- c("white", "white", "white", "white", "#FCBC52", "#A9011B", "#4E7989")
+figs3bc_populations <- c("B_nonASC", "CD3_T", "NK", "DC", "PMN")
+figs3d_groups <- c("other ADS", "MOGAD", "MS")
+
+figs3_theme <- theme_bw()+
+    theme(axis.text.x = element_text(size = figs3_text_size, angle = 45, hjust = 1),
+          axis.text.y = element_text(size = figs3_text_size),
+          strip.text = element_text(size = figs3_text_size),
+          axis.title = element_text(size = figs3_text_size),
+          legend.position = "none")
+
+figs3a_table <- sample_data_long %>%
+    dplyr::filter(population_name == "ASC") %>% # just summarizing the long data into a single row
+    dplyr::filter(diego_bin %in% figs3_groups) %>%
+    dplyr::mutate(diego_bin = factor(diego_bin, levels = figs3_groups)) %>%
+    dplyr::mutate(sample_concentration_ml = 1000 * sample_concentration) #transforming concentration to cells/mL
+
+figs3a_stats <- figs3a_table %>% 
+    rstatix::wilcox_test(sample_concentration_ml ~ diego_bin, comparisons = figs3_comparisons, p.adjust.method = figs3_comparison_correction) %>%
+    rstatix::add_xy_position(scales = "free_y") 
+
+figs3bc_table <- sample_data_long %>%
+    dplyr::filter(population_name %in% figs3bc_populations) %>%
+    dplyr::mutate(population_name = factor(population_name, levels = figs3bc_populations)) %>%
+    dplyr::mutate(population_name = forcats::fct_recode(population_name, `CD3+ T cells` = "CD3_T", `NK cells` = "NK", `DCs` = "DC", `PMNs` = "PMN", `non-ASC B cells` = "B_nonASC")) %>%
+    dplyr::filter(diego_bin %in% figs3_groups) %>%
+    dplyr::mutate(diego_bin = factor(diego_bin, figs3_groups)) %>%
+    droplevels() %>%
+    dplyr::mutate(cell_concentration_ml = 1000 * cell_concentration) #get to cells/mL
+
+figs3b_stats_freqs <- figs3bc_table %>% 
+    dplyr::group_by(population_name) %>%
+    rstatix::wilcox_test(percent_parent ~ diego_bin, comparisons = figs3_comparisons, p.adjust.method = figs3_comparison_correction) %>%
+    rstatix::add_xy_position(scales = "free_y") %>% 
+    dplyr::filter(p.adj.signif != "ns") %>%
+    dplyr::group_by(population_name) %>%
+    dplyr::mutate(y.position = min(y.position))
+
+figs3c_stats_counts <- figs3bc_table %>% 
+    dplyr::group_by(population_name) %>%
+    rstatix::wilcox_test(cell_concentration_ml ~ diego_bin, comparisons = figs3_comparisons, p.adjust.method = figs3_comparison_correction) %>%
+    rstatix::add_xy_position(scales = "free_y") %>% 
+    dplyr::filter(p.adj.signif != "ns") %>%
+    dplyr::group_by(population_name) %>%
+    dplyr::mutate(y.position = min(y.position))
+
+figs3d_pmn_cutoff <- sample_data_long %>%
+    dplyr::filter(population_name %in% c("PMN"), diego_bin == "NIND") %>%
+    dplyr::group_by(diego_bin, population_name) %>%
+    dplyr::summarize(mean_parent = mean(percent_parent),
+                     sdp = sd(percent_parent),
+                     mean_plus_2sd = mean_parent+(2*sdp)) %>%
+    dplyr::pull(mean_plus_2sd)
+
+rounded_cutoff <- round(figs3d_pmn_cutoff, 2)
+figs3d_table <- sample_data_long %>%
+    dplyr::filter(diego_bin %in% figs3d_groups) %>%
+    dplyr::mutate(diego_bin = factor(diego_bin, levels = figs3d_groups)) %>%
+    dplyr::mutate(fisher_bins = ifelse(diego_bin == "MS", "MS", "MOGAD/other ADS")) %>%
+    dplyr::filter(population_name == "PMN")  %>%
+    dplyr::mutate(above_threshold = ifelse(percent_parent > figs3d_pmn_cutoff, TRUE, FALSE)) %>%
+    dplyr::mutate(above_threshold_formatted = ifelse(above_threshold, "Above Threshold", "Below Threshold"))
+
+figs3e_table <- figs3d_table %>%
+    dplyr::group_by(fisher_bins) %>%
+    dplyr::summarize(num_above = sum(above_threshold), num_below = sum(!above_threshold))
+
+figs3e_stats <- figs3e_table %>%
+    dplyr::select(-fisher_bins) %>%
+    fisher.test()
+
+```
+
+## Plotting
+```{r}
+
+figs3a <- ggplot(figs3a_table, aes(x = diego_bin, y = log10(1+sample_concentration_ml)))+
+    geom_boxplot(aes(fill = diego_bin), outlier.shape = NA, colour = "black")+
+    ggbeeswarm::geom_quasirandom(aes(fill = diego_bin), shape = 21, colour = "black", size = figs3_pt_size)+
+    scale_fill_manual(values = ads_palette)+
+    my_y_scale+
+    xlab(NULL)+
+    facet_wrap(~"Cells")+
+    ylab("cells/mL")+
+    fig2_theme
+
+if(any(figs3a_stats$p < 0.1)){
+    figs3a <- figs3a +
+        ggpubr::stat_pvalue_manual(data = figs3a_stats %>%
+                                       dplyr::group_by(population_name) %>%
+                                       dplyr::mutate(y.position = min(y.position)) %>%
+                                       dplyr::ungroup(),
+                                   step.group.by = "population_name",
+                                   step.increase = 0.1,
+                                   tip.length = 0.01,
+                                   bracket.nudge.y = 0.1)
+}
+
+
+figs3b <- ggplot(figs3bc_table, aes(x = diego_bin, y = percent_parent))+
+    geom_boxplot(aes(group = diego_bin, fill = diego_bin), outlier.shape = NA, colour = "black")+
+    ggbeeswarm::geom_quasirandom(aes(group = diego_bin, fill = diego_bin), shape = 21, colour = "black", size = fig2_pt_size)+
+    facet_wrap(~population_name, ncol = 5, scales = "free")+
+    theme_bw()+
+    scale_fill_manual(values = ads_palette)+
+    fig2_theme+
+    xlab(NULL)+
+    ylab("% of cells")+
+    my_y_scale_perc +
+    ggpubr::stat_pvalue_manual(data = figs3b_stats_freqs %>%
+                                   dplyr::group_by(population_name) %>%
+                                   dplyr::mutate(y.position = min(y.position)) %>%
+                                   dplyr::ungroup(),
+                               step.group.by = "population_name",
+                               step.increase = 0.1,
+                               tip.length = 0.01,
+                               bracket.nudge.y = 0.1)
+
+figs3c <- ggplot(figs3bc_table, aes(x = diego_bin, y = log10(1+cell_concentration_ml)))+
+    geom_boxplot(aes(group = diego_bin, fill = diego_bin), outlier.shape = NA, colour = "black")+
+    ggbeeswarm::geom_quasirandom(aes(group = diego_bin, fill = diego_bin), shape = 21, colour = "black", size = fig2_pt_size)+
+    facet_wrap(~population_name, ncol = 5, scales = "free")+
+    theme_bw()+
+    scale_fill_manual(values = ads_palette)+
+    fig2_theme+
+    xlab(NULL)+
+    ylab("cells/mL")+
+    my_y_scale+
+    ggpubr::stat_pvalue_manual(data = figs3c_stats_counts %>%
+                                   dplyr::group_by(population_name) %>%
+                                   dplyr::mutate(y.position = log10(1+min(y.position))) %>%
+                                   dplyr::ungroup(),
+                               step.group.by = "population_name",
+                               step.increase = 0.1,
+                               tip.length = 0.01,
+                               bracket.nudge.y = 0.1)
+
+figs3d <- ggplot(figs3d_table, aes(x = diego_bin))+
+    geom_bar(aes(fill = above_threshold_formatted), colour = "black")+
+    facet_wrap(~"PMNs detected above threshold")+
+    theme_bw()+
+    fig2_theme+
+    theme(legend.position = "right")+
+    scale_fill_manual("PMN detection", values = c(`Above Threshold` = "black", `Below Threshold` = "white"))+
+    xlab(NULL)+
+    ylab("Patients")
+
+figs3e <- figs3e_table %>%
+    tidyr::pivot_longer(-fisher_bins, values_to = "Count", names_to = "Class") %>%
+    dplyr::mutate(fisher_bins = factor(fisher_bins, levels = c("MOGAD/other ADS", "MS"))) %>%
+    dplyr::mutate(category = ifelse(Class == "num_above", "Above Threshold", "Below Threshold")) %>%
+    ggplot(aes(x = category, y = fisher_bins))+
+    geom_tile(fill = "white", colour = "black")+
+    theme_bw()+
+    geom_text(aes(label = Count))+
+    scale_x_discrete(position = "top", expand = c(0,0))+
+    scale_y_discrete(expand = c(0,0))+
+    xlab(NULL)+
+    ylab(NULL)+
+    fig2_theme+
+    ggtitle(label = "", subtitle = paste0("Fisher's exact test: p-value = ", round(figs3e_stats$p.value, 3)))+
+    theme(axis.ticks = element_blank(),
+          plot.title.position = "plot",
+          axis.text.x = element_text(angle = 0, hjust = 0.5))
+
+
+figs3right <- cowplot::plot_grid(figs3b, figs3c, align = "hv", axis = "y", ncol = 1, labels = LETTERS[2:3])
+figs3top <- cowplot::plot_grid(figs3a, figs3right, align = "hv", axis = "y", ncol = 2, labels = c("A", ""), rel_widths = c(1,5))
+
+figs3de <- cowplot::plot_grid(figs3d, cowplot::plot_grid(NULL, figs3e, NULL, ncol = 1), align = "hv", axis = "x", ncol = 2, labels = LETTERS[4:5], rel_widths = c(1,1))
+figs3bottom <- cowplot::plot_grid(figs3de, NULL, rel_widths = c(2,0.1))
+
+pdf(file = paste0(target_directory, "FigureS3.pdf"), height = 9, width = 12)
+cowplot::plot_grid(figs3top, figs3bottom, ncol = 1, rel_heights = c(2,1.5))
+dev.off() 
+
+```
+
+
+
+
+
+# Figure S4
+
+## Setup
+```{r,eval=TRUE}
+figs4_pt_size <- 1.5
+figs4_text_size <- 10
+figs4_groups <- c("NIND", "PIND", "AIE", "IDWM", "other ADS", "MOGAD", "MS")
+figs4_comparisons <- list( c("other ADS", "MOGAD"),c("other ADS", "MS"), c("MS", "MOGAD"))
+figs4_comparison_correction <- "none"
+ads_palette <- c("white", "white", "white", "white", "#FCBC52", "#A9011B", "#4E7989")
+figs4_populations <- c("CD4_T", "CD8_T", "CD4_Treg", "CD4_Th1", "CD4_Th17", "CD4_Th17.1", "CD4_Th0Th2")
+
+figs4_theme <- theme_bw()+
+    theme(axis.text.x = element_text(size = figs4_text_size, angle = 45, hjust = 1),
+          axis.text.y = element_text(size = figs4_text_size),
+          strip.text = element_text(size = figs4_text_size),
+          axis.title = element_text(size = figs4_text_size),
+          legend.position = "none")
+
+figs4a_table <- sample_data_long %>%
+    dplyr::filter(population_name %in% figs4_populations) %>%
+    dplyr::mutate(population_name = factor(population_name, levels = figs4_populations)) %>%
+    dplyr::filter(diego_bin %in% figs4_groups) %>%
+    dplyr::mutate(diego_bin = factor(diego_bin, levels = figs4_groups)) %>%
+    dplyr::mutate(population_name = forcats::fct_recode(population_name, `CD4+ T cells` = "CD4_T", `CD8+ T cells` = "CD8_T", `CD4+ Treg` = "CD4_Treg", `CD4+ Th1` = "CD4_Th1", `CD4+ Th17` = "CD4_Th17", `CD4+ Th17.1` = "CD4_Th17.1", `CD4+ Th0/Th2` = "CD4_Th0Th2")) %>%
+    dplyr::mutate(cell_concentration_ml = 1000 * cell_concentration) %>% #get to cells/mL
+    droplevels()
+
+figs4a_stats_freqs <- figs4a_table %>% 
+    dplyr::group_by(population_name) %>%
+    rstatix::wilcox_test(percent_parent ~ diego_bin, comparisons = figs4_comparisons, p.adjust.method = figs4_comparison_correction) %>%
+    rstatix::add_xy_position(scales = "free_y") %>%
+    dplyr::group_by(population_name) %>%
+    dplyr::mutate(y.position = min(y.position)) %>%
+    dplyr::filter(p.adj.signif != "ns")
+
+figs4a_stats_freqs_subset <- figs4a_stats_freqs %>%
+    dplyr::select(population_name, group1, p) %>%
+    dplyr::mutate(diego_bin = group1)
+
+figs4b_table <- figs4a_table %>%
+    dplyr::filter(diego_bin %in% c("other ADS", "MOGAD", "MS")) %>%
+    dplyr::group_by(diego_bin, population_name) %>%
+    dplyr::summarize(median_concentration = median(percent_parent)) %>% 
+    dplyr::ungroup() %>%
+    dplyr::group_by(population_name) %>%
+    dplyr::mutate(ms_concentration = median_concentration[diego_bin == "MS"]) %>%
+    dplyr::filter(diego_bin != "MS") %>%
+    dplyr::mutate(delta_median_concentration = ms_concentration-median_concentration) %>%
+    dplyr::mutate(fc_concentration = ms_concentration/median_concentration) %>%
+    dplyr::mutate(log_fc_medians = log10(fc_concentration)) %>%
+    dplyr::left_join(figs4a_stats_freqs_subset, by = c("population_name", "diego_bin")) %>%
+    dplyr::mutate(comparison = ifelse(is.na(p), "not significant", paste0("MS vs. ", diego_bin))) %>%
+    dplyr::mutate(comparison = factor(comparison, levels = unique(names(fig3d_comparison_palette))))
+```
+
+## Plotting
+```{r}
+
+figs4_plotter <- function(my_table, my_stats, my_population, my_title, freqs = TRUE, my_y_lab_freq = NULL){
+    my_stats <- my_stats %>%
+        dplyr::filter(population_name %in% my_population)
+    my_table <- my_table %>%
+        dplyr::filter(population_name %in% my_population)
+    if(freqs){
+        temp_fig <- my_table %>%
+            ggplot(aes(x = diego_bin, y = percent_parent, group = diego_bin))+
+            my_y_scale_perc+
+            ylab(my_y_lab_freq)
+        if(nrow(my_stats) > 0){
+            temp_fig <- temp_fig+
+                ggpubr::stat_pvalue_manual(data = my_stats %>%
+                                               dplyr::mutate(y.position = min(y.position)),
+                                           step.increase = 0.1,
+                                           tip.length = 0.01,
+                                           bracket.nudge.y = -0.5)
+        }
+        
+    } else {
+        temp_fig <- my_table %>%
+            ggplot(aes(x = diego_bin, y = log10(1+cell_concentration_ml), group = diego_bin))+
+            my_y_scale+
+            ylab("cells/mL")
+        if(nrow(my_stats) > 0){
+            temp_fig <- temp_fig+
+                ggpubr::stat_pvalue_manual(data = my_stats %>%
+                                               dplyr::mutate(y.position = log10(1+min(y.position))),
+                                           step.increase = 0.1,
+                                           tip.length = 0.01,
+                                           bracket.nudge.y = 0.1)
+        }
+    }
+    
+    
+    temp_fig <- temp_fig +
+        geom_boxplot(aes(fill = diego_bin), outlier.shape = NA, colour = "black")+
+        ggbeeswarm::geom_quasirandom(aes(fill = diego_bin), shape = 21, colour = "black", size = figs4_pt_size)+
+        scale_x_discrete(drop=FALSE)+
+        scale_fill_manual(values = ads_palette)+
+        figs4_theme+
+        facet_wrap(~paste0(my_title), scales = "free_y")+
+        xlab(NULL)
+    
+    return(temp_fig)
+}
+
+figs4ai <- figs4_plotter(figs4a_table, figs4a_stats_freqs, "CD4+ T cells", my_title = "CD4+ T cells", freqs = TRUE, my_y_lab_freq = "% of CD3+ T cells")
+figs4aii <- figs4_plotter(figs4a_table, figs4a_stats_freqs, "CD8+ T cells", my_title = "CD8+ T cells", freqs = TRUE, my_y_lab_freq = "% of CD3+ T cells")
+figs4aiii <- figs4_plotter(figs4a_table, figs4a_stats_freqs, "CD4+ Treg", my_title = "CD4+ Treg", freqs = TRUE, my_y_lab_freq = "% of CD4+ T cells")
+figs4aiv <- figs4_plotter(figs4a_table, figs4a_stats_freqs, "CD4+ Th1", my_title = "CD4+ Th1", freqs = TRUE, my_y_lab_freq = "% of memory CD4+ T cells")
+figs4av <- figs4_plotter(figs4a_table, figs4a_stats_freqs, "CD4+ Th17", my_title = "CD4+ Th17", freqs = TRUE, my_y_lab_freq = "% of memory CD4+ T cells")
+figs4avi <- figs4_plotter(figs4a_table, figs4a_stats_freqs, "CD4+ Th17.1", my_title = "CD4+ Th17.1", freqs = TRUE, my_y_lab_freq = "% of memory CD4+ T cells")
+figs4avii <- figs4_plotter(figs4a_table, figs4a_stats_freqs, "CD4+ Th0/Th2", my_title = "CD4+ Th0Th2", freqs = TRUE, my_y_lab_freq = "% of memory CD4+ T cells")
+
+figs4a <- cowplot::plot_grid(figs4ai, figs4aii, figs4aiii, NULL, figs4aiv, figs4av, figs4avi, figs4avii, ncol = 4, labels = "A")
+
+
+figs4b <- ggplot(figs4b_table, aes(x = log_fc_medians, y = population_name, fill = comparison))+
+    ggbeeswarm::geom_beeswarm(shape = 21, size = 2*figs4_pt_size, cex = 3, method = "hex", side = 1L)+
+    scale_fill_manual("Comparisons", values = fig3d_comparison_palette)+
+    scale_x_continuous(limits = c(-2,2), breaks = seq(from = -2, to = 2, by = 1))+
+    theme_bw()+
+    fig2_theme+
+    geom_vline(xintercept = 0)+
+    ylab("T-cell subset")+
+    theme(legend.position = "bottom",
+          legend.justification = "left",
+          legend.text = element_text(size = 0.75*fig3_text_size),
+          legend.key.height = unit(0.01, "cm"),
+          legend.title = element_text(size = 0.75*fig3_text_size),
+          axis.text.x = element_text(angle = 0, hjust = 0.5))+
+    xlab("log10 fold-change of medians\nlog10(MS/comparator)")+
+    facet_grid(~"log10(frequency fold-change)")+
+    guides(fill = guide_legend(nrow = 3, byrow = FALSE, title.position = "top"))
+
+pdf(file = paste0(target_directory, "FigureS4.pdf"), height = 6, width = 12)
+cowplot::plot_grid(figs4a, figs4b, ncol = 2, align = "h", axis = "y", labels = c("A", "B"), rel_widths = c(4,2))
+dev.off() 
+
+```
+
+
+# Figure 4
+
+## Setup
+```{r}
+fig4a_comparisons <- list(c("other ADS", "MOGAD"),c("other ADS", "MS"), c("MS", "MOGAD"))
+fig4_comparison_correction <- "none"
+fig4_text_size <- 10
+fig4_theme_rat <- theme_bw()+
+    theme(axis.text.x = element_text(size = fig4_text_size, angle = 45, hjust = 1),
+          axis.text.y = element_text(size = fig4_text_size),
+          strip.text = element_text(size = fig4_text_size),
+          axis.title = element_text(size = fig4_text_size),
+          legend.position = "none")
+
+fig4a_table <-  fig3_table %>% 
+    dplyr::filter(population_name %in% c("ASC", "CD14_Mono")) %>%
+    dplyr::group_by(pni_name) %>%
+    dplyr::mutate(ratio = percent_parent[population_name == "ASC"]/percent_parent[population_name == "CD14_Mono"]) %>%
+    dplyr::filter(population_name == "ASC") %>%
+    dplyr::ungroup()
+
+fig4a_stats <- fig4a_table %>% 
+    rstatix::wilcox_test(ratio ~ diego_bin, comparisons = fig4a_comparisons, p.adjust.method = fig4_comparison_correction) %>%
+    rstatix::add_xy_position(scales = "free_y") %>%
+    dplyr::mutate(y.position = min(y.position))
+
+fig4b_table <-  fig4a_table %>% 
+    dplyr::filter(population_name == "ASC")
+
+fig4b_stats <- fig4b_table %>% 
+    rstatix::wilcox_test(brain_composite_score ~ diego_bin, comparisons = fig4a_comparisons, p.adjust.method = fig4_comparison_correction) %>%
+    rstatix::add_xy_position(scales = "free_y") %>%
+    dplyr::mutate(y.position = min(y.position))
+
+fig4c_table <- fig4a_table %>%
+    dplyr::filter(diego_bin %in% c("other ADS", "MOGAD", "MS")) %>%
+    dplyr::mutate(is_ms = ifelse(diego_bin == "MS", "MS", "non-MS"))
+
+fig4c_order <- c("AMR, MS-vs-MOGAD/other ADS", "coNCS, MS-vs-MOGAD/other ADS", "AMR, MS-vs-MOGAD", "coNCS, MS-vs-MOGAD", "AMR, MS-vs-other ADS", "coNCS, MS-vs-other ADS")
+fig4_model_palette <- c(AMR = "#FDAE6B", coNCS = "#BCBDDC")
+
+roc.msvsmogad.ratio <- roc(fig4c_table$diego_bin, fig4c_table$ratio, levels = c("MS", "MOGAD"))
+roc.msvsmogad.bcc <- roc(fig4c_table$diego_bin, fig4c_table$brain_composite_score, levels = c("MS", "MOGAD"))
+roc.msvsoa.ratio <- roc(fig4c_table$diego_bin, fig4c_table$ratio, levels = c("MS", "other ADS"))
+roc.msvsoa.bcc <- roc(fig4c_table$diego_bin, fig4c_table$brain_composite_score, levels = c("MS", "other ADS"))
+roc.msvsall.ratio <- roc(fig4c_table$is_ms, fig4c_table$ratio, levels = c("MS", "non-MS"))
+roc.msvsall.bcc <- roc(fig4c_table$is_ms, fig4c_table$brain_composite_score, levels = c("MS", "non-MS"))
+
+fig4c_auc_table <- rbind(data.frame(pROC::coords(roc.msvsmogad.ratio), model.auc = as.numeric(auc(roc.msvsmogad.ratio)), test = "AMR, MS-vs-MOGAD"),
+                         data.frame(pROC::coords(roc.msvsmogad.bcc), model.auc = as.numeric(auc(roc.msvsmogad.bcc)), test = "coNCS, MS-vs-MOGAD"),
+                         data.frame(pROC::coords(roc.msvsoa.ratio), model.auc = as.numeric(auc(roc.msvsoa.ratio)), test = "AMR, MS-vs-other ADS"),
+                         data.frame(pROC::coords(roc.msvsoa.bcc), model.auc = as.numeric(auc(roc.msvsoa.bcc)), test = "coNCS, MS-vs-other ADS"),
+                         data.frame(pROC::coords(roc.msvsall.ratio), model.auc = as.numeric(auc(roc.msvsall.ratio)), test = "AMR, MS-vs-MOGAD/other ADS"),
+                         data.frame(pROC::coords(roc.msvsall.bcc), model.auc = as.numeric(auc(roc.msvsall.bcc)), test = "coNCS, MS-vs-MOGAD/other ADS")) %>%
+    dplyr::mutate(test = factor(test, levels = fig4c_order)) %>%
+    dplyr::mutate(comparison = gsub("^.*, ", "", test)) %>%
+    dplyr::mutate(score_choice = ifelse(grepl("AMR", test), "AMR", "coNCS"))
+
+
+fig4c_auc_summaries <- fig4c_auc_table %>%
+    dplyr::group_by(score_choice, comparison) %>%
+    dplyr::summarize(model.auc = unique(model.auc)) %>%
+    dplyr::mutate(auc_label = paste0(score_choice, " AUC = ", sprintf("%03.2f", model.auc)))
+
+```
+
+## Plotting
+```{r,eval=TRUE}
+
+fig4a <- ggplot(fig4a_table, aes(x = diego_bin, y = log10(0.01+ratio)))+
+    geom_boxplot(aes(fill = diego_bin), outlier.shape = NA, colour = "black")+
+    ggbeeswarm::geom_quasirandom(aes(fill = diego_bin), shape = 21, colour = "black", size = fig3_pt_size)+
+    scale_x_discrete(drop=FALSE)+
+    scale_fill_manual(values = ads_palette)+
+    fig4_theme_rat+
+    theme(strip.background = element_rect(fill = "#FDAE6B"))+
+    facet_wrap(~"ASC/CD14+ Myeloid Ratio", scales = "free_y")+
+    xlab(NULL)+
+    ylab("log10(AMR+0.01)")+
+    ggpubr::stat_pvalue_manual(data = fig4a_stats %>%
+                                   dplyr::filter(p.adj.signif != "ns") %>%
+                                   dplyr::mutate(y.position = log10(0.01+min(y.position))),
+                               step.increase = 0.1,
+                               tip.length = 0.01,
+                               bracket.nudge.y = 0.1)
+
+fig4b <- ggplot(fig4b_table, aes(x = diego_bin, y = log10(0.01+brain_composite_score)))+
+    geom_boxplot(aes(fill = diego_bin), outlier.shape = NA, colour = "black")+
+    ggbeeswarm::geom_quasirandom(aes(fill = diego_bin), shape = 21, colour = "black", size = fig3_pt_size)+
+    scale_x_discrete(drop=FALSE)+
+    scale_fill_manual(values = ads_palette)+
+    fig4_theme_rat+
+    theme(strip.background = element_rect(fill = "#BCBDDC"))+
+    facet_wrap(~"CSF-only Neuroinflammatory Composite Score", scales = "free_y")+
+    xlab(NULL)+
+    ylab("log10(coNCS+0.01)")+
+    ggpubr::stat_pvalue_manual(data = fig4b_stats %>%
+                                   dplyr::filter(p.adj.signif != "ns") %>%
+                                   dplyr::mutate(y.position = log10(0.01+min(y.position))),
+                               step.increase = 0.1,
+                               tip.length = 0.01,
+                               bracket.nudge.y = 0.1)
+
+fig4c <- fig4c_auc_table %>%
+    dplyr::mutate(comparison = factor(comparison, levels = c("MS-vs-MOGAD/other ADS", "MS-vs-MOGAD", "MS-vs-other ADS"))) %>%
+    dplyr::arrange(sensitivity) %>%
+    ggplot(aes(x = 1-specificity, y = sensitivity))+
+    geom_line(aes(colour = score_choice, group = test))+
+    geom_point(aes(fill = score_choice, group = test), colour = "black", shape = 21)+
+    geom_text(data = fig4c_auc_summaries %>% dplyr::filter(score_choice == "AMR"), aes(x = 0.95, y = 0.05, label = auc_label), hjust = 1, size = 3.5)+
+    geom_text(data = fig4c_auc_summaries %>% dplyr::filter(score_choice == "coNCS"), aes(x = 0.95, y = 0, label = auc_label), hjust = 1, size = 3.5)+
+    fig4_theme_rat+
+    xlab("False positive rate")+
+    ylab("True positive rate")+
+    facet_wrap(~comparison)+
+    scale_y_continuous(breaks = seq(0,1, by = 0.8))+
+    theme(legend.position = "right")+
+    scale_colour_manual("ROC", values = fig4_model_palette)+
+    scale_fill_manual("ROC", values = fig4_model_palette)+
+    theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+fig4_top <- cowplot::plot_grid(fig4a, fig4b, ncol = 3, align = "h", axis = "y", labels = c("A", "B"), rel_widths = c(3,3,0.75))
+
+pdf(file = paste0(target_directory, "Figure4.pdf"), height = 8, width = 9)
+cowplot::plot_grid(fig4_top, fig4c, ncol = 1, align = "h", axis = "y", labels = c("", "C"))
+dev.off()
+
+```
+
+# Figure S5
+
+## Setup
+```{r}
+figs5_comparison_correction <- "none"
+figs5_groups <- c("other ADS", "MOGAD", "MS")
+figs5_comparisons <- list(c("untreated other ADS", "untreated MS"),
+                          c("untreated other ADS", "treated MS"),
+                          c("untreated other ADS", "untreated MOGAD"),
+                          c("untreated other ADS", "treated MOGAD"),
+                          c("untreated MOGAD", "untreated MS"),
+                          c("untreated MOGAD", "treated MS"),
+                          c("treated MOGAD", "untreated MS"),
+                          c("treated MOGAD", "treated MS"))
+
+figs5_table <- fig4a_table %>% 
+    dplyr::filter(diego_bin %in% figs5_groups) %>%
+    droplevels() %>%
+    dplyr::mutate(ads_diagnosis_2 = paste0(treatment_status, " " , diego_bin)) %>%
+    dplyr::mutate(ads_diagnosis_2 = factor(ads_diagnosis_2, levels = c("untreated other ADS", "treated other ADS", "untreated MOGAD", "treated MOGAD", "untreated MS", "treated MS")))
+
+figs5a_stats <- figs5_table %>% 
+    rstatix::wilcox_test(ratio ~ ads_diagnosis_2, comparisons = figs5_comparisons, p.adjust.method = figs5_comparison_correction) %>%
+    rstatix::add_xy_position(scales = "free_y") %>%
+    dplyr::mutate(y.position = min(y.position))
+
+figs5b_stats <- figs5_table %>% 
+    rstatix::wilcox_test(brain_composite_score ~ ads_diagnosis_2, comparisons = figs5_comparisons, p.adjust.method = figs5_comparison_correction) %>%
+    rstatix::add_xy_position(scales = "free_y") %>%
+    dplyr::mutate(y.position = min(y.position))
+
+```
+
+## Plotting
+```{r}
+
+figs5a <- figs5_table %>%
+    ggplot(aes(x = ads_diagnosis_2, y = log10(0.01+ratio)))+
+    geom_boxplot(aes(fill = ads_diagnosis_2), outlier.shape = NA, colour = "black")+
+    ggbeeswarm::geom_quasirandom(aes(fill = ads_diagnosis_2), shape = 21, colour = "black", size = fig3_pt_size)+
+    scale_x_discrete(drop=FALSE)+
+    scale_fill_manual(values = ads_palette[c(5,5,6,6,7,7)])+
+    fig4_theme_rat+
+    theme(strip.background = element_rect(fill = "#FDAE6B"))+
+    facet_wrap(~"ASC/CD14+ Myeloid Ratio", scales = "free_y")+
+    xlab(NULL)+
+    ylab("log10(AMR+0.01)")
+figs5b <- figs5_table %>%
+    ggplot(aes(x = ads_diagnosis_2, y = log10(0.01+brain_composite_score)))+
+    geom_boxplot(aes(fill = ads_diagnosis_2), outlier.shape = NA, colour = "black")+
+    ggbeeswarm::geom_quasirandom(aes(fill = ads_diagnosis_2), shape = 21, colour = "black", size = fig3_pt_size)+
+    scale_x_discrete(drop=FALSE)+
+    scale_fill_manual(values = ads_palette[c(5,5,6,6,7,7)])+
+    fig4_theme_rat+
+    theme(strip.background = element_rect(fill = "#BCBDDC"))+
+    facet_wrap(~"CSF-only Neuroinflammatory Composite Score", scales = "free_y")+
+    xlab(NULL)+
+    ylab("log10(coNCS+0.01)")
+
+
+pdf(file = paste0(target_directory, "FigureS5.pdf"), height = 6, width = 9)
+cowplot::plot_grid(figs5a, figs5b, ncol = 2, align = "hv", labels = c("A", "B"))
+dev.off()
+
+```
+
+
+# Figure S6
+
+## Setup
+```{r}
+figs6_comparison_correction <- "none"
+figs6a_comparisons <- list(c("other ADS", "MOGAD"), c("other ADS", "MS"), c("MOGAD", "MS"))
+figs6a_groups <- c("other ADS", "MOGAD", "MS")
+figs6b_order <- c("AMR, MS-vs-MOGAD/other ADS", "Full NCS, MS-vs-MOGAD/other ADS", "AMR, MS-vs-MOGAD", "Full NCS, MS-vs-MOGAD", "AMR, MS-vs-other ADS", "Full NCS, MS-vs-other ADS")
+figs6_model_palette <- c(AMR = "#FDAE6B", `Full NCS` = "#B33E52")
+
+figs6a_table <- fig4b_table %>%
+    dplyr::filter(!is.na(brain_composite_score_full))
+figs6a_stats <- figs6a_table %>% 
+    rstatix::wilcox_test(brain_composite_score_full ~ diego_bin, comparisons = figs6a_comparisons, p.adjust.method = figs6_comparison_correction) %>%
+    rstatix::add_xy_position(scales = "free_y") %>%
+    dplyr::mutate(y.position = min(y.position))
+
+figs6b_table <- figs6a_table %>%
+    dplyr::filter(diego_bin %in% c("other ADS", "MOGAD", "MS")) %>%
+    dplyr::mutate(is_ms = ifelse(diego_bin == "MS", "MS", "non-MS"))
+
+bd.roc.msvsmogad.ratio <- roc(figs6b_table$diego_bin, figs6b_table$ratio, levels = c("MS", "MOGAD"))
+bd.roc.msvsmogad.bcc <- roc(figs6b_table$diego_bin, figs6b_table$brain_composite_score_full, levels = c("MS", "MOGAD"))
+bd.roc.msvsoa.ratio <- roc(figs6b_table$diego_bin, figs6b_table$ratio, levels = c("MS", "other ADS"))
+bd.roc.msvsoa.bcc <- roc(figs6b_table$diego_bin, figs6b_table$brain_composite_score_full, levels = c("MS", "other ADS"))
+bd.roc.msvsall.ratio <- roc(figs6b_table$is_ms, figs6b_table$ratio, levels = c("MS", "non-MS"))
+bd.roc.msvsall.bcc <- roc(figs6b_table$is_ms, figs6b_table$brain_composite_score_full, levels = c("MS", "non-MS"))
+
+figs6b_auc_table <- rbind(data.frame(pROC::coords(bd.roc.msvsmogad.ratio), model.auc = as.numeric(auc(bd.roc.msvsmogad.ratio)), test = "AMR, MS-vs-MOGAD"),
+                          data.frame(pROC::coords(bd.roc.msvsmogad.bcc), model.auc = as.numeric(auc(bd.roc.msvsmogad.bcc)), test = "Full NCS, MS-vs-MOGAD"),
+                          data.frame(pROC::coords(bd.roc.msvsoa.ratio), model.auc = as.numeric(auc(bd.roc.msvsoa.ratio)), test = "AMR, MS-vs-other ADS"),
+                          data.frame(pROC::coords(bd.roc.msvsoa.bcc), model.auc = as.numeric(auc(bd.roc.msvsoa.bcc)), test = "Full NCS, MS-vs-other ADS"),
+                          data.frame(pROC::coords(bd.roc.msvsall.ratio), model.auc = as.numeric(auc(bd.roc.msvsall.ratio)), test = "AMR, MS-vs-MOGAD/other ADS"),
+                          data.frame(pROC::coords(bd.roc.msvsall.bcc), model.auc = as.numeric(auc(bd.roc.msvsall.bcc)), test = "Full NCS, MS-vs-MOGAD/other ADS")) %>%
+    dplyr::mutate(score_choice = ifelse(grepl("AMR", test), "AMR", "Full NCS")) %>%
+    dplyr::mutate(comparison = gsub("^.*, ", "", test)) %>%
+    dplyr::mutate(test = factor(test, levels = figs6b_order))
+
+figs6b_auc_summaries <- figs6b_auc_table %>%
+    dplyr::group_by(score_choice, comparison) %>%
+    dplyr::summarize(model.auc = unique(model.auc)) %>%
+    dplyr::mutate(auc_label = paste0(score_choice, " AUC = ", sprintf("%03.2f", model.auc)))
+```
+
+## Plotting
+```{r,eval=TRUE}
+
+figs6a <- figs6a_table %>%
+    ggplot(aes(x = diego_bin, y = log10(0.01+brain_composite_score_full)))+
+    geom_boxplot(aes(fill = diego_bin), outlier.shape = NA, colour = "black")+
+    ggbeeswarm::geom_quasirandom(aes(fill = diego_bin), shape = 21, colour = "black", size = fig3_pt_size)+
+    scale_x_discrete(drop=FALSE)+
+    scale_fill_manual(values = ads_palette)+
+    fig4_theme_rat+
+    theme(strip.background = element_rect(fill = "#B33E52"),
+          strip.text = element_text(colour = "white"))+
+    my_y_scale_perc +
+    facet_wrap(~"Full Neuroinflammatory Composite Score", scales = "free_y")+
+    xlab(NULL)+
+    ylab("log10(Full NCS+0.01)")+
+    ggpubr::stat_pvalue_manual(data = figs6a_stats %>%
+                                   dplyr::mutate(y.position = log10(1+min(y.position))),
+                               step.increase = 0.1,
+                               tip.length = 0.01,
+                               bracket.nudge.y = 0.1)
+
+figs6b <- figs6b_auc_table %>%
+    dplyr::mutate(comparison = factor(comparison, levels = c("MS-vs-MOGAD/other ADS", "MS-vs-MOGAD", "MS-vs-other ADS"))) %>%
+    dplyr::arrange(sensitivity) %>%
+    ggplot(aes(x = 1-specificity, y = sensitivity))+
+    geom_line(aes(colour = score_choice, group = test))+
+    geom_point(aes(fill = score_choice, group = test), colour = "black", shape = 21)+
+    geom_text(data = figs6b_auc_summaries %>% dplyr::filter(score_choice == "AMR"), aes(x = 0.95, y = 0.05, label = auc_label), hjust = 1, size = 3.5)+
+    geom_text(data = figs6b_auc_summaries %>% dplyr::filter(score_choice == "Full NCS"), aes(x = 0.95, y = 0, label = auc_label), hjust = 1, size = 3.5)+
+    fig4_theme_rat+
+    xlab("False positive rate")+
+    ylab("True positive rate")+
+    facet_wrap(~comparison)+
+    scale_y_continuous(breaks = seq(0,1, by = 0.8))+
+    theme(legend.position = "right")+
+    scale_colour_manual("ROC", values = figs6_model_palette)+
+    scale_fill_manual("ROC", values = figs6_model_palette)+
+    theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+
+figs6_top <- cowplot::plot_grid(figs6a, NULL, ncol = 2, rel_widths = c(6,1))
+
+pdf(file = paste0(target_directory, "FigureS6.pdf"), height = 9, width = 8)
+cowplot::plot_grid(figs6_top, figs6b, ncol = 1, align = "h", axis = "y", labels = c("A", "B"))
+dev.off()
+
+
+```
+
+# Figure S7
+
+## Setup
+```{r}
+
+figs7_groups <- c("NIND", "PIND", "AIE", "IDWM", "other ADS", "MOGAD", "MS", "VE", "HLH")
+figs7_palette <- c("white", "white", "white", "white", "#FCBC52", "#A9011B", "#4E7989", "#B8E186", "pink")
+names(figs7_palette) <- figs7_groups
+figs7_populations <- unique(sample_data_long$population_name)
+figs7_comparison_correction <- "none"
+
+figs7_pt_size <- 2
+figs7_text_size <- 9
+figs7_theme <- theme_bw()+
+    theme(axis.text.x = element_text(size = figs7_text_size, angle = 45, hjust = 1),
+          axis.text.y = element_text(size = figs7_text_size),
+          strip.text = element_text(size = figs7_text_size),
+          axis.title = element_text(size = figs7_text_size),
+          legend.position = "none")
+
+figs7_theme_w_legend <- figs7_theme+
+    theme(legend.text = element_text(size = figs7_text_size * 0.7),
+          legend.title = element_text(size = figs7_text_size * 0.7),
+          legend.key.height = unit(0.3, "cm"),
+          legend.key.width = unit(0.05, "cm"))
+
+figs7_table <- sample_data_long %>%
+    dplyr::filter(population_name %in% figs7_populations) %>%
+    dplyr::filter(diego_bin %in% figs7_groups) %>%
+    droplevels() %>%
+    dplyr::mutate(diego_bin = factor(diego_bin, figs7_groups)) %>%
+    dplyr::mutate(population_name = factor(population_name, levels = figs7_populations)) %>%
+    dplyr::mutate(cell_concentration_ml = cell_concentration * 1000)
+
+```
+
+
+## Plotting
+```{r}
+
+figs7a <- figs7_table %>%
+    dplyr::filter(population_name == "CD8_Tnn_act") %>%
+    ggplot(aes(x = diego_bin, y = percent_parent, group = diego_bin))+
+    geom_boxplot(aes(fill = diego_bin), outlier.shape = NA, colour = "black")+
+    ggbeeswarm::geom_quasirandom(aes(fill = diego_bin), shape = 21, colour = "black", size = figs7_pt_size)+
+    scale_x_discrete(drop=FALSE)+
+    scale_fill_manual(values = figs7_palette)+
+    figs7_theme+
+    scale_y_continuous(limits = c(0,100))+
+    ylab("% of CD8+ T memory")+
+    facet_wrap(~"Activated CD8+ T cells", scales = "free_y")+
+    xlab(NULL)
+
+
+pdf(file = paste0(target_directory, "FigureS7.pdf"), height = 4, width = 6)
+figs7a
+dev.off()
+
+
+```
+
+
+
+
